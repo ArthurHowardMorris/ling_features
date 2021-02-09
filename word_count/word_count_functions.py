@@ -14,7 +14,7 @@ def number_count(raw):
     """
     results = re.findall(r'\b(?<=-)?[,0-9\.]+(?=\s)', raw)
     results = [result for result in results
-                if not re.match(r'(199|20[01])\d', result)
+                if not re.match(r'(199|20[012])\d', result)
                   and re.search(r'[0-9]', result)]
     return len(results)
 
