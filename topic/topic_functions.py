@@ -2,9 +2,12 @@
 import re, json
 from nltk.tokenize import wordpunct_tokenize
 import pandas as pd
+import os 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+import ast 
 
 # Word list from draft of Kothari, Li and Short (2009)
-word_list = {
+kls_word_list = {
 	'market': ['market', 'marketplace', 'environment', 'segment', 'sector'],
 	'competition': ['market', 'marketplace', 'environment', 'customer', 'channel', 'value',
 		'first-mover', 'technology', 'alliance', 'partnership', 'venture',
@@ -63,7 +66,16 @@ word_list = {
 		'testimony', 'industry', 'watchdog', 'consumer rights', 'patient rights']
 		}
 
-def kls_domains(raw_text):
+# Import word lists in csv files
+def create_word_list(input_csv):
+    df = pd.read_csv(input_csv)
+    # Make exact match unless the word has * at the end
+    df.replace({'\*':'\\\S*'}, regex=True, inplace=True)
+    return {col:('\\b'+df[col].dropna().astype(str)+'\\b').tolist() for col in df}
+
+mpr_word_list = create_word_list(os.path.join(_HERE, 'mpr_wordlist.csv'))
+
+def get_domains(raw_text, word_list):
 
 	lower_text = raw_text.lower()
 
@@ -73,8 +85,17 @@ def kls_domains(raw_text):
 
 def kls_domains_ind(raw_text):
 
+    word_list = kls_word_list
     domains = word_list.keys()
-    domain_list = kls_domains(raw_text)
+    domain_list = get_domains(raw_text, word_list)
+
+    return json.dumps({domain: domain in domain_list for domain in domains})
+
+def mpr_domains_ind(raw_text):
+
+    word_list = mpr_word_list
+    domains = word_list.keys()
+    domain_list = get_domains(raw_text, word_list)
 
     return json.dumps({domain: domain in domain_list for domain in domains})
 
@@ -82,6 +103,52 @@ def expand_json(df, col):
     return pd.concat([df.drop([col], axis=1),
                       df[col].map(lambda x: json.loads(x)).apply(pd.Series)], axis=1)
 
+# Regexes for comp intensity
+comp_regex = r"([Cc]ompet(?:(?:it(?:ion|or|ive))|e|ing)s?)"
+comp_regex = re.compile(r"((?:\w+\W+){0,3})" + comp_regex, re.I)
+
+exclude_regex = r"(not|less|few|limited)"
+exclude_regex = re.compile(r"\W" + exclude_regex + r"\W", re.I)
+
+# Comp intensity measures    
+def comp_domains_ind(sents):
+
+    if not re.search(comp_regex, sents):
+        return None
+    elif re.search(exclude_regex, re.search(comp_regex, sents).group(1)):
+        preceding_words = re.search(comp_regex, sents).group(1)
+        matches = {'preceding_words': re.search(comp_regex, sents).group(1),
+                    'competition_word': re.search(comp_regex, sents).group(2),
+                    'exclude_matches':re.search(exclude_regex, preceding_words).group(),
+                    'exclude':True}
+        return json.dumps(matches)
+    else:
+        matches = {'preceding_words': re.search(comp_regex, sents).group(1),
+                    'competition_word': re.search(comp_regex, sents).group(2),
+                    'exclude_matches':None,
+                    'exclude':False}
+        return json.dumps(matches)
+    
+# KLS word lists
+def get_kls_df():
+    df = pd.DataFrame({'category': kls_word_list.keys() , 
+                       'words': kls_word_list.values()})
+    return df
+ 
+# MPR word lists
+def get_mpr_df():
+    df = pd.DataFrame({'category': mpr_word_list.keys() , 
+                       'words': mpr_word_list.values()})
+    df['words'] = df['words'].astype(str).str.replace(r"\\\\b","",regex=True).apply(ast.literal_eval)
+    return df
+
+# Comp intensity word lists
+def get_comp_df():
+    comp_df = {'category': ['comp_intensity_regex', 'exclude_regex'],
+         'pattern': [comp_regex.pattern, exclude_regex.pattern]}
+    comp_df = pd.DataFrame(comp_df)
+    return comp_df    
+    
 if __name__=="__main__":
 
     text = "I think you spent a little bit of time talking about AdSense for Content, " + \
@@ -95,3 +162,5 @@ if __name__=="__main__":
             " those new products? "
 
     print(kls_domains_ind(text))
+    print(mpr_domains_ind(text))
+    print(comp_domains_ind(text))

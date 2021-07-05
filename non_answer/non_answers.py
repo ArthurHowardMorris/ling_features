@@ -4,6 +4,7 @@ import json
 import re
 import os
 _HERE = os.path.dirname(os.path.abspath(__file__))
+import pandas as pd
 
 def makeWordLists(file):
 
@@ -79,6 +80,11 @@ def non_answers(sents):
         return None
     else:
         return [json.dumps(match) for match in matches]
+
+def get_regexes_df():
+    regexes_df = pd.DataFrame(regexes)
+    regexes_df = regexes_df.drop(['re'], axis=1)
+    return regexes_df
 
 if __name__ == "__main__":
     sents = ["I refuse to answer that.",
